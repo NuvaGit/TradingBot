@@ -1,23 +1,31 @@
 import os
 import time
-import alpaca_trade_api as tradeapi
 import pandas as pd
-import pandas_ta as ta  # Use pandas-ta for technical indicators
+import pandas_ta as ta  # For technical indicators
 
-API_KEY = 'AKT9DU6YYPIOZFBE71FK'
-API_SECRET = 'kB2TR929D3Ytkz5e7Adcv2EogCsJMzBhPaVSlWdo'
-BASE_URL = 'https://paper-api.alpaca.markets'
+# Alpaca-Py imports
+from alpaca.trading.client import TradingClient
+from alpaca.trading.requests import MarketOrderRequest, GetOrdersRequest
+from alpaca.trading.enums import OrderSide, TimeInForce
+from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.requests import StockBarsRequest
+from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+from alpaca.trading.client import TradingClient
 
 
-print(f"API Key: {API_KEY}")
-print(f"API Secret: {API_SECRET}")
-# Initialize the API
-api = tradeapi.REST(API_KEY, API_SECRET, BASE_URL, api_version='v2')
+# Load API credentials from environment variables
+API_KEY = 'AKDTUCR3K56BVCLQ87WY'
+API_SECRET = 'BTaCgI8Ls7flz4rxoPainzFfJ3n811PCMYLEuzT4'
+BASE_URL = 'https://paper-api.alpaca.markets'  # Paper trading URL
 
+
+
+
+
+trading_client = TradingClient(API_KEY, API_SECRET, paper=True)
+data_client = StockHistoricalDataClient(API_KEY, API_SECRET)
 
 def get_live_data(symbol, timeframe='1Min', limit=100):
-    from alpaca_trade_api.rest import TimeFrame, TimeFrameUnit
-
     # Map string to TimeFrame object
     timeframe_mapping = {
         '1Min': TimeFrame(1, TimeFrameUnit.Minute),
@@ -28,14 +36,24 @@ def get_live_data(symbol, timeframe='1Min', limit=100):
     }
     tf = timeframe_mapping.get(timeframe, TimeFrame(1, TimeFrameUnit.Minute))
 
+    # Create request parameters
+    request_params = StockBarsRequest(
+        symbol_or_symbols=symbol,
+        timeframe=tf,
+        limit=limit
+    )
+
     # Fetch bars
-    barset = api.get_bars(symbol, tf, limit=limit).df
+    barset = data_client.get_stock_bars(request_params).df
 
-    # Since we're fetching data for a single symbol, no need to filter
-    data = barset.reset_index()
+    # If data for multiple symbols, extract the symbol's data
+    if isinstance(barset.index, pd.MultiIndex):
+        data = barset.xs(symbol)
+    else:
+        data = barset
 
+    data = data.reset_index()
     return data
-
 
 def calculate_indicators(data):
     # Calculate RSI
@@ -51,28 +69,26 @@ def calculate_indicators(data):
 
     return data
 
-
 def generate_signals(data):
     data['Signal'] = 0
     data['MACD_Signal_Cross'] = data['MACD_12_26_9'] - data['MACDs_12_26_9']
     data['Prev_MACD_Signal_Cross'] = data['MACD_Signal_Cross'].shift(1)
 
     buy_signal_condition = (
-            (data['RSI'] < 30) &
-            (data['MACD_Signal_Cross'] > 0) &
-            (data['Prev_MACD_Signal_Cross'] <= 0)
+        (data['RSI'] < 30) &
+        (data['MACD_Signal_Cross'] > 0) &
+        (data['Prev_MACD_Signal_Cross'] <= 0)
     )
     data.loc[buy_signal_condition, 'Signal'] = 1
 
     sell_signal_condition = (
-            (data['RSI'] > 70) &
-            (data['MACD_Signal_Cross'] < 0) &
-            (data['Prev_MACD_Signal_Cross'] >= 0)
+        (data['RSI'] > 70) &
+        (data['MACD_Signal_Cross'] < 0) &
+        (data['Prev_MACD_Signal_Cross'] >= 0)
     )
     data.loc[sell_signal_condition, 'Signal'] = -1
 
     return data
-
 
 def execute_trades_test(data, symbol, qty=1):
     last_signal = data.iloc[-1]['Signal']
@@ -80,16 +96,34 @@ def execute_trades_test(data, symbol, qty=1):
 
     if last_signal == 1:
         print(f"Would place a **BUY** order for {symbol}")
+        # Create a market order request
+        market_order_data = MarketOrderRequest(
+            symbol=symbol,
+            qty=qty,
+            side=OrderSide.BUY,
+            time_in_force=TimeInForce.DAY
+        )
+        # Uncomment the line below to place an actual order
+        # order = trading_client.submit_order(market_order_data)
+        # print(order)
     elif last_signal == -1:
         print(f"Would place a **SELL** order for {symbol}")
+        # Create a market order request
+        market_order_data = MarketOrderRequest(
+            symbol=symbol,
+            qty=qty,
+            side=OrderSide.SELL,
+            time_in_force=TimeInForce.DAY
+        )
+        # Uncomment the line below to place an actual order
+        # order = trading_client.submit_order(market_order_data)
+        # print(order)
     else:
         print("No action needed.")
 
-
 def is_market_open():
-    clock = api.get_clock()
+    clock = trading_client.get_clock()
     return clock.is_open
-
 
 def main():
     symbol = 'AAPL'
@@ -119,7 +153,6 @@ def main():
         except Exception as e:
             print(f"An error occurred: {e}")
             time.sleep(60)
-
 
 if __name__ == "__main__":
     main()
