@@ -4,12 +4,13 @@ import alpaca_trade_api as tradeapi
 import pandas as pd
 import pandas_ta as ta  # Use pandas-ta for technical indicators
 
-# Load API keys from environment variables
-# Load API keys from environment variables
-API_KEY = os.environ.get('APCA_API_KEY_ID')  # Correct env var for Alpaca API Key
-API_SECRET = os.environ.get('APCA_API_SECRET_KEY')  # Correct env var for Alpaca API Secret
-BASE_URL = 'https://paper-api.alpaca.markets'  # Use 'https://api.alpaca.markets' for live trading
+API_KEY = 'AKT9DU6YYPIOZFBE71FK'
+API_SECRET = 'kB2TR929D3Ytkz5e7Adcv2EogCsJMzBhPaVSlWdo'
+BASE_URL = 'https://paper-api.alpaca.markets'
 
+
+print(f"API Key: {API_KEY}")
+print(f"API Secret: {API_SECRET}")
 # Initialize the API
 api = tradeapi.REST(API_KEY, API_SECRET, BASE_URL, api_version='v2')
 
