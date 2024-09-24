@@ -32,39 +32,31 @@ trading_client = TradingClient(API_KEY, API_SECRET, paper=True)
 data_client = StockHistoricalDataClient(API_KEY, API_SECRET)
 
 # List of stocks to trade
+# List of stocks to trade
 STOCKS_TO_TRADE = [
-    'AAPL', 'MSFT', 'NUKK', 'AGRI', 'ONCO', 'FRGT', 'SOBR', 'CETX', 'PEGY', 'LGMK', 'NCL', 'CTM', 'SEEL',
-    'TSLA',  # Tesla - Electric vehicles and clean energy
-    'AMZN',  # Amazon - E-commerce and cloud computing
-    'GOOGL', # Alphabet (Google) - Search engine and tech
-    'NVDA',  # Nvidia - Graphics processors and AI
-    'AMD',   # Advanced Micro Devices - Semiconductors
-    'META',  # Meta Platforms (Facebook) - Social media and VR
-    'SHOP',  # Shopify - E-commerce platform
-    'NFLX',  # Netflix - Streaming services
-    'DIS',   # Disney - Media and entertainment
-    'PYPL'   # PayPal - Digital payments and fintech
-]
+    'AAPL', 'MSFT', 'NUKK', 'AGRI',
+    'ONCO', 'FRGT', 'SOBR', 'CETX',
+    'PEGY', 'LGMK', 'NCL', 'CTM',
+    'SEEL', 'TSLA','AMZN','GOOGL',
+    'NVDA','AMD','META','SHOP',
+    'NFLX','DIS','BA','JPM','PFE'
+    ,'WMT','V',]
 
 
-# Risk management parameters
+
 ACCOUNT_EQUITY = float(trading_client.get_account().equity)
-RISK_PER_TRADE = 0.01  # Risk 1% of account equity per trade
+RISK_PER_TRADE = 0.01  # risk per trade
 MAX_POSITION_SIZE = 0.15  # Maximum 10% of account equity per position
 
-# Machine learning retrain frequency
-MODEL_RETRAIN_INTERVAL = 60 * 60  # Retrain every hour
+MODEL_RETRAIN_INTERVAL = 15 * 15  # Retrain every 15 mins
 
-# Data fetching parameters
-TIMEFRAME = '1D'  # Adjusted timeframe
-LIMIT = 15000  # Adjusted limit
+TIMEFRAME = '1D'
+LIMIT = 15000
 
-# Global variables for the model and scaler
 models = {}
 scalers = {}
 last_model_train_time = {}
 
-# Lock for thread-safe operations
 lock = threading.Lock()
 
 def get_live_data(symbol, timeframe='15Min', limit=1000):
@@ -79,7 +71,7 @@ def get_live_data(symbol, timeframe='15Min', limit=1000):
     tf = timeframe_mapping.get(timeframe, TimeFrame(15, TimeFrameUnit.Minute))
 
     end_date = pd.Timestamp.now(tz='America/New_York')
-    start_date = end_date - pd.Timedelta(days=200)  # Increased the number of days to get more data
+    start_date = end_date - pd.Timedelta(days=712)
 
     request_params = StockBarsRequest(
         symbol_or_symbols=symbol,
@@ -87,7 +79,7 @@ def get_live_data(symbol, timeframe='15Min', limit=1000):
         start=start_date,
         end=end_date,
         limit=limit,
-        feed='iex'  # Specify IEX feed
+        feed='iex'
     )
 
     barset = data_client.get_stock_bars(request_params).df
@@ -106,7 +98,6 @@ def get_live_data(symbol, timeframe='15Min', limit=1000):
     return data
 
 def calculate_indicators(data):
-    # Ensure data is sorted by date
     data.sort_values(by='timestamp', inplace=True)
     data.reset_index(drop=True, inplace=True)
 
@@ -117,7 +108,6 @@ def calculate_indicators(data):
     data['MACD_Signal'] = macd_indicator.macd_signal()
     data['MACD_Hist'] = macd_indicator.macd_diff()
 
-    # Corrected SMA windows and names
     data['SMA_20'] = data['close'].rolling(window=20).mean()
     data['SMA_50'] = data['close'].rolling(window=50).mean()
 
@@ -130,8 +120,7 @@ def calculate_indicators(data):
     data['ATR'] = ta.volatility.AverageTrueRange(
         data['high'], data['low'], data['close'], window=14).average_true_range()
 
-    # Fill missing values and drop NaNs
-    data.fillna(method='ffill', inplace=True)
+    data.ffill()
     data.dropna(inplace=True)
 
     return data
@@ -375,7 +364,7 @@ def process_symbol(symbol):
         logging.error(traceback.format_exc())
 
 def main():
-    max_workers = len(STOCKS_TO_TRADE)
+    max_workers = min(5,len(STOCKS_TO_TRADE))
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         while True:
             try:
