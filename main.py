@@ -14,6 +14,10 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from concurrent.futures import ThreadPoolExecutor
+from alpaca.trading.requests import LimitOrderRequest
+from decimal import Decimal
+
+
 
 API_KEY = 'PKYATZH5P2AGSKR1CM15'
 API_SECRET = '1pgIlow7kAEQnDYCnQiphHzIyNyrrbvEPb2Wpg6R'
@@ -77,7 +81,7 @@ def get_live_data(symbol, timeframe='15Min', limit=1000):
     tf = timeframe_mapping.get(timeframe, TimeFrame(15, TimeFrameUnit.Minute))
 
     end_date = pd.Timestamp.now(tz='America/New_York')
-    start_date = end_date - pd.Timedelta(days=1500)
+    start_date = end_date - pd.Timedelta(days=3000)
 
     request_params = StockBarsRequest(
         symbol_or_symbols=symbol,
@@ -241,19 +245,18 @@ def calculate_position_size(symbol, entry_price, stop_loss_price):
     return int(shares_to_buy)
 
 
+from decimal import Decimal
+
 def execute_trades(data, symbol, current_positions):
     last_signal = data.iloc[-1]['Aggregated_Signal']
     current_price = data.iloc[-1]['close']
     atr = data.iloc[-1]['ATR']
 
-    # Determine stop-loss and take-profit levels
     stop_loss = current_price - (2 * atr)
     take_profit = current_price + (4 * atr)
 
-    # Get the number of shares to trade based on current conditions
     qty_to_trade = calculate_position_size(symbol, current_price, stop_loss)
 
-    # Get the current position for the symbol, if any
     current_qty = current_positions.get(symbol, 0)  # Default to 0 if the stock is not held
 
     logging.info(
@@ -261,36 +264,45 @@ def execute_trades(data, symbol, current_positions):
 
     try:
         if last_signal > 0:
-            max_position_value = 1000  # Maximum allowed position of $15,000
+            max_position_value = 1000  # Maximum allowed position of $1,000
             max_shares = max_position_value / current_price
             remaining_shares_to_buy = int(max_shares - current_qty)
 
             if remaining_shares_to_buy > 0 and qty_to_trade > 0:
                 logging.info(
-                    f"Placing additional BUY order for {symbol}, Remaining Shares to Buy: {remaining_shares_to_buy}")
-                market_order_data = MarketOrderRequest(
+                    f"Placing BUY LIMIT order for {symbol}, Remaining Shares to Buy: {remaining_shares_to_buy}")
+
+                # Calculate limit price slightly below current price (e.g., 0.5% lower)
+                limit_price = round(current_price * 0.995, 2)
+
+                limit_order_data = LimitOrderRequest(
                     symbol=symbol,
-                    qty=min(qty_to_trade, remaining_shares_to_buy),  # Ensure we don't exceed the $15k position limit
+                    qty=min(qty_to_trade, remaining_shares_to_buy),
                     side=OrderSide.BUY,
-                    time_in_force=TimeInForce.DAY
+                    time_in_force=TimeInForce.DAY,
+                    limit_price=Decimal(str(limit_price))
                 )
-                order = trading_client.submit_order(market_order_data)
-                logging.info(f"Order Response: {order}")
+                order = trading_client.submit_order(limit_order_data)
+                logging.info(f"Limit Order Response: {order}")
             else:
                 logging.info(f"Already at max position for {symbol}, skipping additional BUY.")
 
         elif last_signal < 0:
-            # Place a sell order if the last signal is negative and we're holding the stock
             if current_qty > 0:
-                logging.info(f"Placing SELL order for {symbol}, Quantity to Sell: {current_qty}")
-                market_order_data = MarketOrderRequest(
+                logging.info(f"Placing SELL LIMIT order for {symbol}, Quantity to Sell: {current_qty}")
+
+                # Calculate limit price slightly above current price (e.g., 0.5% higher)
+                limit_price = round(current_price * 1.005, 2)
+
+                limit_order_data = LimitOrderRequest(
                     symbol=symbol,
                     qty=current_qty,
                     side=OrderSide.SELL,
-                    time_in_force=TimeInForce.DAY
+                    time_in_force=TimeInForce.DAY,
+                    limit_price=Decimal(str(limit_price))
                 )
-                order = trading_client.submit_order(market_order_data)
-                logging.info(f"Order Response: {order}")
+                order = trading_client.submit_order(limit_order_data)
+                logging.info(f"Limit Order Response: {order}")
             else:
                 logging.info(f"Not holding {symbol}, skipping SELL order.")
         else:
@@ -299,7 +311,6 @@ def execute_trades(data, symbol, current_positions):
     except Exception as e:
         logging.error(f"Error executing trade for {symbol}: {e}")
         logging.error(traceback.format_exc())
-
 
 def is_market_open():
     clock = trading_client.get_clock()
