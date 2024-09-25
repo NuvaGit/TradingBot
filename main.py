@@ -35,12 +35,18 @@ data_client = StockHistoricalDataClient(API_KEY, API_SECRET)
 # List of stocks to trade
 STOCKS_TO_TRADE = [
     'AAPL', 'MSFT', 'NUKK', 'AGRI',
-    'ONCO', 'FRGT', 'SOBR', 'CETX',
-    'PEGY', 'LGMK', 'NCL', 'CTM',
-    'SEEL', 'TSLA','AMZN','GOOGL',
-    'NVDA','AMD','META','SHOP',
-    'NFLX','DIS','BA','JPM','PFE'
-    ,'WMT','V',]
+    'SOBR', 'CETX', 'PEGY', 'LGMK', 'CTM',
+    'SEEL', 'TSLA', 'AMZN', 'GOOGL', 'NVDA',
+    'AMD', 'META', 'SHOP', 'NFLX', 'DIS',
+    'JPM', 'PFE', 'WMT', 'V',
+    # Volatile Penny Stocks (NASDAQ)
+    'DASH',  # DOORDASH
+    'VERB',  # Verb Technology Company, Inc.
+    'CIDM',  # Cinedigm Corp.
+    'OCGN',  # Ocugen, Inc.
+    'SNDL'   # Sundial Growers Inc.
+]
+
 
 
 
@@ -71,7 +77,7 @@ def get_live_data(symbol, timeframe='15Min', limit=1000):
     tf = timeframe_mapping.get(timeframe, TimeFrame(15, TimeFrameUnit.Minute))
 
     end_date = pd.Timestamp.now(tz='America/New_York')
-    start_date = end_date - pd.Timedelta(days=712)
+    start_date = end_date - pd.Timedelta(days=1500)
 
     request_params = StockBarsRequest(
         symbol_or_symbols=symbol,
@@ -380,7 +386,7 @@ def main():
                     future.result()  # Wait for all threads to complete
 
                 logging.info("Completed processing all symbols. Sleeping until next iteration.")
-                time.sleep(10)
+                time.sleep(1)
 
             except KeyboardInterrupt:
                 logging.info("Bot stopped by user.")
