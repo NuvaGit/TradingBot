@@ -17,10 +17,8 @@ from concurrent.futures import ThreadPoolExecutor
 from alpaca.trading.requests import LimitOrderRequest
 from decimal import Decimal
 
-
-
-API_KEY = 'PKYATZH5P2AGSKR1CM15'
-API_SECRET = '1pgIlow7kAEQnDYCnQiphHzIyNyrrbvEPb2Wpg6R'
+API_KEY = 'PKTRZ1BKSEQ70W3X5NUD'
+API_SECRET = 'e9eslyQkn9lMVEnbIANJccanlKaK5iJZK42KDt79'
 BASE_URL = 'https://paper-api.alpaca.markets/v2'  # Paper trading URL
 
 logging.basicConfig(
@@ -36,22 +34,12 @@ trading_client = TradingClient(API_KEY, API_SECRET, paper=True)
 data_client = StockHistoricalDataClient(API_KEY, API_SECRET)
 
 # List of stocks to trade
-# List of stocks to trade
 STOCKS_TO_TRADE = [
-    'AAPL', 'MSFT', 'NUKK', 'AGRI',
-    'SOBR', 'CETX', 'PEGY', 'LGMK', 'CTM',
-    'SEEL', 'TSLA', 'AMZN', 'GOOGL', 'NVDA',
-    'AMD', 'META', 'SHOP', 'NFLX', 'DIS',
-    'JPM', 'PFE', 'WMT', 'V',
-    # Volatile Penny Stocks (NASDAQ)
-    'DASH',  # DOORDASH
-    'VERB',  # Verb Technology Company, Inc.
-    'CIDM',  # Cinedigm Corp.
-    'OCGN',  # Ocugen, Inc.
-    'SNDL'   # Sundial Growers Inc.
+    'AAPL', 'MSFT', 'TSLA', 'AMZN', 'GOOGL', 'NVDA',
+    'AMD', 'META', 'SHOP', 'NFLX', 'DIS', 'JPM', 'PFE', 'WMT', 'V','DASH'
+    # Volatile Penny Stocks (NASDAQ) Removed
+    # 'NUKK', 'AGRI', 'SOBR', 'CETX', 'PEGY', 'LGMK', 'CTM', 'DASH', 'VERB'
 ]
-
-
 
 
 ACCOUNT_EQUITY = float(trading_client.get_account().equity)
@@ -60,7 +48,9 @@ MAX_POSITION_SIZE = 0.15  # Maximum 10% of account equity per position
 
 MODEL_RETRAIN_INTERVAL = 15 * 15  # Retrain every 15 mins
 
-TIMEFRAME = '1D'
+
+# THE TIME FRAME WE PREDICT CHANGED TO 1 HOUR FROM 1 DAY
+TIMEFRAME = '1H'
 LIMIT = 15000
 
 models = {}
@@ -69,7 +59,8 @@ last_model_train_time = {}
 
 lock = threading.Lock()
 
-def get_live_data(symbol, timeframe='15Min', limit=1000):
+
+def get_live_data(symbol, timeframe='15Min', limit=500):
     timeframe_mapping = {
         '1Min': TimeFrame(1, TimeFrameUnit.Minute),
         '5Min': TimeFrame(5, TimeFrameUnit.Minute),
@@ -81,7 +72,7 @@ def get_live_data(symbol, timeframe='15Min', limit=1000):
     tf = timeframe_mapping.get(timeframe, TimeFrame(15, TimeFrameUnit.Minute))
 
     end_date = pd.Timestamp.now(tz='America/New_York')
-    start_date = end_date - pd.Timedelta(days=3000)
+    start_date = end_date - pd.Timedelta(days=3560)
 
     request_params = StockBarsRequest(
         symbol_or_symbols=symbol,
@@ -106,6 +97,7 @@ def get_live_data(symbol, timeframe='15Min', limit=1000):
     data = data.reset_index()
     logging.info(f"{symbol} - Retrieved {len(data)} rows of data")
     return data
+
 
 def calculate_indicators(data):
     data.sort_values(by='timestamp', inplace=True)
@@ -135,6 +127,7 @@ def calculate_indicators(data):
 
     return data
 
+
 def generate_signals(data):
     data['Signal'] = 0
 
@@ -160,14 +153,14 @@ def generate_signals(data):
     data['Prev_MACD_Cross'] = data['MACD_Cross'].shift(1)
 
     buy_signal = (
-        (data['RSI'] < 30) &
-        (data['MACD_Cross'] > 0) &
-        (data['Prev_MACD_Cross'] <= 0)
+            (data['RSI'] < 30) &
+            (data['MACD_Cross'] > 0) &
+            (data['Prev_MACD_Cross'] <= 0)
     )
     sell_signal = (
-        (data['RSI'] > 70) &
-        (data['MACD_Cross'] < 0) &
-        (data['Prev_MACD_Cross'] >= 0)
+            (data['RSI'] > 70) &
+            (data['MACD_Cross'] < 0) &
+            (data['Prev_MACD_Cross'] >= 0)
     )
 
     data.loc[buy_signal, 'Signal'] += 1
@@ -178,6 +171,7 @@ def generate_signals(data):
 
     return data
 
+
 def prepare_ml_data(data):
     features = data[['open', 'high', 'low', 'close', 'volume', 'RSI', 'MACD', 'MACD_Signal',
                      'SMA_20', 'SMA_50', 'EMA_20', 'Momentum', 'ATR']]
@@ -187,6 +181,7 @@ def prepare_ml_data(data):
     target = target[:-1]
 
     return features, target
+
 
 def train_random_forest(features, target, symbol):
     if len(features) < 50:
@@ -213,6 +208,7 @@ def train_random_forest(features, target, symbol):
         logging.error(traceback.format_exc())
         return None, None
 
+
 def predict_next_close(model, scaler, last_row):
     features = last_row[['open', 'high', 'low', 'close', 'volume', 'RSI', 'MACD', 'MACD_Signal',
                          'SMA_20', 'SMA_50', 'EMA_20', 'Momentum', 'ATR']]
@@ -220,13 +216,16 @@ def predict_next_close(model, scaler, last_row):
     prediction = model.predict(features_scaled)
     return prediction[0]
 
+
 def get_open_positions():
     positions = trading_client.get_all_positions()
     current_positions = {position.symbol: float(position.qty) for position in positions}
     return current_positions
 
+
 def is_stock_held(symbol, current_positions):
     return symbol in current_positions and current_positions[symbol] > 0
+
 
 def calculate_position_size(symbol, entry_price, stop_loss_price):
     account = trading_client.get_account()
@@ -244,8 +243,6 @@ def calculate_position_size(symbol, entry_price, stop_loss_price):
     shares_to_buy = min(position_size, max_shares)
     return int(shares_to_buy)
 
-
-from decimal import Decimal
 
 def execute_trades(data, symbol, current_positions):
     last_signal = data.iloc[-1]['Aggregated_Signal']
@@ -312,10 +309,12 @@ def execute_trades(data, symbol, current_positions):
         logging.error(f"Error executing trade for {symbol}: {e}")
         logging.error(traceback.format_exc())
 
+
 def is_market_open():
     clock = trading_client.get_clock()
     logging.info(f"Market Open: {clock.is_open}")
     return clock.is_open
+
 
 def retrain_model_if_needed(symbol, data):
     current_time = time.time()
@@ -330,6 +329,7 @@ def retrain_model_if_needed(symbol, data):
             logging.info(f"Retrained model for {symbol}")
         else:
             logging.warning(f"Model training for {symbol} failed. Skipping.")
+
 
 def process_symbol(symbol):
     try:
@@ -380,8 +380,9 @@ def process_symbol(symbol):
         logging.error(f"An error occurred while processing {symbol}: {e}")
         logging.error(traceback.format_exc())
 
+
 def main():
-    max_workers = min(5,len(STOCKS_TO_TRADE))
+    max_workers = min(5, len(STOCKS_TO_TRADE))
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         while True:
             try:
@@ -406,6 +407,7 @@ def main():
                 logging.error(f"An unexpected error occurred: {e}")
                 logging.error(traceback.format_exc())
                 time.sleep(60)
+
 
 if __name__ == "__main__":
     main()
