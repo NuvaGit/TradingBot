@@ -11,7 +11,6 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
-# Replace with your Alpaca API credentials
 API_KEY = 'YOUR_API_KEY'
 API_SECRET = 'YOUR_API_SECRET'
 
@@ -19,7 +18,6 @@ trading_client = TradingClient(API_KEY, API_SECRET, paper=True)
 data_client = StockHistoricalDataClient(API_KEY, API_SECRET)
 
 def get_live_data(symbol, timeframe='1Min', limit=100):
-    # Map string to TimeFrame object
     timeframe_mapping = {
         '1Min': TimeFrame(1, TimeFrameUnit.Minute),
         '5Min': TimeFrame(5, TimeFrameUnit.Minute),
@@ -36,10 +34,8 @@ def get_live_data(symbol, timeframe='1Min', limit=100):
         limit=limit
     )
 
-    # Fetch bars
     barset = data_client.get_stock_bars(request_params).df
 
-    # If data for multiple symbols, extract the symbol's data
     if isinstance(barset.index, pd.MultiIndex):
         data = barset.xs(symbol)
     else:
@@ -52,21 +48,17 @@ def calculate_indicators(data):
     # Calculate RSI
     data['RSI'] = ta.momentum.RSIIndicator(data['close'], window=14).rsi()
 
-    # Calculate MACD
     macd_indicator = ta.trend.MACD(data['close'], window_slow=26, window_fast=12, window_sign=9)
     data['MACD'] = macd_indicator.macd()
     data['MACD_Signal'] = macd_indicator.macd_signal()
     data['MACD_Hist'] = macd_indicator.macd_diff()
 
-    # Calculate SMA (Simple Moving Average)
     data['SMA_50'] = data['close'].rolling(window=50).mean()
     data['SMA_200'] = data['close'].rolling(window=200).mean()
 
-    # Calculate Donchian Channels
     data['Donchian_High'] = data['high'].rolling(window=20).max()
     data['Donchian_Low'] = data['low'].rolling(window=20).min()
 
-    # Fill missing values and remove any remaining NaNs
     data.fillna(method='ffill', inplace=True)
     data.dropna(inplace=True)
 
@@ -124,19 +116,15 @@ def prepare_ml_data(data):
     return features, target
 
 def train_random_forest(features, target):
-    # Split data
     X_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.2, random_state=42)
 
-    # Scaling
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
-    # Model
     model = RandomForestRegressor(n_estimators=100, random_state=42)
     model.fit(X_train_scaled, y_train)
 
-    # Accuracy
     accuracy = model.score(X_test_scaled, y_test)
     print(f"Random Forest Regressor Accuracy: {accuracy:.2f}")
 
@@ -200,7 +188,6 @@ def main():
     # Train Random Forest model
     model, scaler = train_random_forest(features, target)
 
-    # Start live trading
     while True:
         try:
             if not is_market_open():
@@ -212,11 +199,9 @@ def main():
             data = calculate_indicators(data)
             data = generate_signals(data)
 
-            # Predict next close price
             next_close_prediction = predict_next_close(model, scaler, data.iloc[-1])
             print(f"Predicted next close price: {next_close_prediction}")
 
-            # Decide based on prediction
             current_close = data.iloc[-1]['close']
             if next_close_prediction > current_close:
                 data.at[data.index[-1], 'Signal'] = 1  # Buy signal
