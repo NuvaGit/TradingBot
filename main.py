@@ -17,9 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from alpaca.trading.requests import LimitOrderRequest
 from decimal import Decimal
 
-API_KEY = 'PKTRZ1BKSEQ70W3X5NUD'
-API_SECRET = 'e9eslyQkn9lMVEnbIANJccanlKaK5iJZK42KDt79'
-BASE_URL = 'https://paper-api.alpaca.markets/v2'  # Paper trading URL
+
 
 logging.basicConfig(
     level=logging.INFO,
